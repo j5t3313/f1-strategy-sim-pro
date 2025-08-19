@@ -23,7 +23,7 @@ A professional Formula 1 race strategy analysis tool that uses advanced tire mod
 ### ⚙️ Flexible Strategy Configuration
 - **9 Pre-defined Strategies**: Common 1-stop and 2-stop strategies with realistic compound sequences
 - **Custom Strategy Editor**: Modify stint lengths and tire compounds for existing strategies
-- **Advanced Strategy Builder**: Create completely new strategies with add/remove stint functionality
+- **Advanced Strategy Builder**: COMING SOON
 - **Custom Tire Allocation**: Define specific tire sets with age and usage history
 - **Strategy Validation**: Automatic checking for tire availability and lap count accuracy
 
