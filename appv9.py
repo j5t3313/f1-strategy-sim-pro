@@ -1567,7 +1567,7 @@ def main():
            - Pick one or more strategies to compare
            - Options include 1-stop and 2-stop strategies with different tire compounds
            - S = Soft, M = Medium, H = Hard tires
-           - Continue with default stint selections or make edits using the Custom or Advanced strategy editors
+           - Continue with default stint selections or make edits using the Custom Strategy Editor
         
         3. 🏁 **Configure Tire Model (Optional)** 🏁
            - **5-Point Curves**: Professional tire modeling with editable parameters
@@ -1687,7 +1687,7 @@ def main():
             # Strategy editors
             strategy_editor_type = st.radio(
                 "Strategy Configuration",
-                ["Use Default Strategies", "Custom Strategy Editor", "Advanced Strategy Builder"],
+                ["Use Default Strategies", "Custom Strategy Editor"],
                 key="strategy_editor_type"
             )
             
