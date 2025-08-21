@@ -30,7 +30,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for styling
+# CSS 
 st.markdown("""
 <style>
 /* Make tab labels larger */
@@ -109,7 +109,7 @@ class F1FivePointTireEditor:
                 'warmup_effect': 1.0,        # Point 2: Most warmup penalty
                 'linear_degradation': 0.012, # Point 3: Slowest degradation
                 'wear_life_start': 35,       # Point 4: Very long before high deg
-                'max_usable_laps': 50        # Point 5: Can run very long
+                'max_usable_laps': 50        # Point 5: Can run much longer
             }
         }
     
@@ -250,7 +250,7 @@ class F1FivePointTireEditor:
         curves = st.session_state.f1_tire_curves
         curve = curves[compound]
         
-        # Start with base laptime
+        # base laptime
         laptime = base_laptime
         
         # Point 1: Compound offset (relative to SOFT)
@@ -621,7 +621,7 @@ class F1StrategySimulator:
     def calculate_tire_performance(self, compound, stint_lap, tire_age, base_laptime, circuit_name):
         """Calculate tire performance - use 5-point curves if enabled, otherwise default physics"""
         
-        # Check if explicitly forcing default physics model
+        # Check if forcing default physics model
         if hasattr(st.session_state, 'force_default_physics') and st.session_state.force_default_physics:
             # Skip all other models and go directly to default physics
             return self._calculate_default_physics_model(compound, stint_lap, tire_age, base_laptime)
@@ -632,7 +632,7 @@ class F1StrategySimulator:
                 compound, stint_lap + tire_age, base_laptime
             )
         
-        # Fallback to default physics model (Bayesian models removed in this version)
+        # Fallback to default physics model 
         return self._calculate_default_physics_model(compound, stint_lap, tire_age, base_laptime)
     
     def _calculate_default_physics_model(self, compound, stint_lap, tire_age, base_laptime):
@@ -1812,4 +1812,5 @@ def main():
             st.rerun()
 
 if __name__ == "__main__":
+
     main()
