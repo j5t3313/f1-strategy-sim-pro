@@ -76,7 +76,6 @@ h3 {
 }
 </style>
 """, unsafe_allow_html=True)
-
 class F1FivePointTireEditor:
     """
     5-point tire curve editor
@@ -601,53 +600,12 @@ class F1StrategySimulator:
         # convert to dict for easy lookup
         self.circuits = {name: data for name, data in self.circuit_data}
         
-        self.bayesian_models = {}
-        self.data_cache = {}
-        self.use_bayesian = self._load_prebuilt_models()
-        
-        # Initialize empirical analyzer if available
-        if EMPIRICAL_AVAILABLE:
-            try:
-                self.empirical_analyzer = EmpiricalTireAnalyzer(models_dir)
-            except Exception as e:
-                print(f"Could not initialize empirical analyzer: {e}")
-                self.empirical_analyzer = None
-        else:
-            self.empirical_analyzer = None
+        # Bayesian models disabled in this version - using 5-point curves or default physics only
         
         # Initialize tire editor
         if 'f1_tire_editor' not in st.session_state:
             st.session_state.f1_tire_editor = F1FivePointTireEditor()
     
-    def _load_prebuilt_models(self):
-        """Load prebuilt models if available"""
-        if not self.models_dir.exists():
-            return False
-            
-        for circuit_name, _ in self.circuit_data:
-            model_file = self.models_dir / f"{circuit_name.lower().replace(' ', '_')}_models.pkl"
-            if model_file.exists():
-                try:
-                    with open(model_file, 'rb') as f:
-                        circuit_data = pickle.load(f)
-                    
-                    # Load Bayesian models (backward compatibility)
-                    if 'models' in circuit_data:
-                        for compound, model_data in circuit_data['models'].items():
-                            model_key = f"{circuit_name}_{compound}"
-                            self.bayesian_models[model_key] = model_data
-                    
-                    # Load newer format with bayesian_models
-                    if 'bayesian_models' in circuit_data:
-                        for compound, model_data in circuit_data['bayesian_models'].items():
-                            model_key = f"{circuit_name}_{compound}"
-                            self.bayesian_models[model_key] = model_data
-                        
-                except Exception as e:
-                    continue
-                    
-        return len(self.bayesian_models) > 0
-        
     def calculate_fuel_consumption(self, circuit):
         """Calculate fuel consumption per lap"""
         laps = self.circuits[circuit]['laps']
@@ -661,7 +619,12 @@ class F1StrategySimulator:
         return raw_laptime - fuel_correction
     
     def calculate_tire_performance(self, compound, stint_lap, tire_age, base_laptime, circuit_name):
-        """Calculate tire performance - use 5-point curves if enabled"""
+        """Calculate tire performance - use 5-point curves if enabled, otherwise default physics"""
+        
+        # Check if explicitly forcing default physics model
+        if hasattr(st.session_state, 'force_default_physics') and st.session_state.force_default_physics:
+            # Skip all other models and go directly to default physics
+            return self._calculate_default_physics_model(compound, stint_lap, tire_age, base_laptime)
         
         # Check if tire curves are enabled
         if hasattr(st.session_state, 'use_f1_curves') and st.session_state.use_f1_curves:
@@ -669,43 +632,12 @@ class F1StrategySimulator:
                 compound, stint_lap + tire_age, base_laptime
             )
         
-        # Try empirical analyzer second
-        if self.empirical_analyzer:
-            try:
-                result = self.empirical_analyzer.calculate_empirical_tire_performance(
-                    compound, stint_lap, tire_age, base_laptime, circuit_name
-                )
-                if result is not None:
-                    return result
-            except Exception:
-                pass  # Fall through to existing methods
+        # Fallback to default physics model (Bayesian models removed in this version)
+        return self._calculate_default_physics_model(compound, stint_lap, tire_age, base_laptime)
+    
+    def _calculate_default_physics_model(self, compound, stint_lap, tire_age, base_laptime):
+        """Calculate tire performance using default physics model"""
         
-        # Fallback to existing Bayesian model logic
-        if self.use_bayesian:
-            model_key = f"{circuit_name}_{compound}"
-            
-            if model_key in self.bayesian_models:
-                model_data = self.bayesian_models[model_key]
-                samples = model_data['samples']
-                
-                effective_stint_lap = stint_lap + tire_age
-                
-                # sample from posterior - use single sample per call for proper stochastic behavior
-                sample_idx = np.random.choice(len(samples['alpha']))
-                
-                alpha_sample = float(samples['alpha'][sample_idx])
-                beta_sample = float(samples['beta'][sample_idx])
-                sigma_sample = float(samples['sigma'][sample_idx])
-                
-                # calculate expected laptime from Bayesian model
-                mu = alpha_sample + beta_sample * effective_stint_lap
-                # add noise from the model's uncertainty
-                prediction = mu + np.random.normal(0, sigma_sample)
-                
-                # Return the prediction directly (already accounts for degradation)
-                return float(prediction)
-        
-        # fallback to physics-based model with compound-specific parameters
         compound_degradation = {
             'SOFT': 0.08,       
             'MEDIUM': 0.04,   
@@ -718,19 +650,21 @@ class F1StrategySimulator:
             'HARD': +0.5      
         }
         
-        # calculate deg
+        # Calculate degradation
         deg_rate = compound_degradation.get(compound, 0.05)
         offset = compound_offsets.get(compound, 0.0)
         
-        # age effect from previous usage
+        # Age effect from previous usage
         age_effect = tire_age * 0.02
         
-        # stint deg (linear + slight exponential for long stints)
+        # Stint degradation (linear + slight exponential for long stints)
         stint_degradation = deg_rate * stint_lap
         if stint_lap > 20:
             stint_degradation += 0.02 * (stint_lap - 20) ** 1.5
         
-        return base_laptime + offset + age_effect + stint_degradation
+        calculated_laptime = base_laptime + offset + age_effect + stint_degradation
+        
+        return calculated_laptime
     
     def validate_tire_allocation(self, strategy, tire_allocation):
         if not tire_allocation:
@@ -795,7 +729,7 @@ class F1StrategySimulator:
                 progress = sim / num_simulations
                 progress_bar.progress(progress)
                 if status_text:
-                    status_text.text(f"🔄 Running simulation {sim + 1}/{num_simulations}...")
+                    status_text.text(f"Running simulation {sim + 1}/{num_simulations}...")
                 
             race_time = 0
             current_lap = 1
@@ -834,10 +768,10 @@ class F1StrategySimulator:
         if progress_bar:
             progress_bar.progress(1.0)
         if status_text:
-            status_text.text("✅ Simulation complete!")
+            status_text.text("Simulation complete!")
             
         return np.array(results)
-  # Helper functions
+    # Helper functions
 def create_results_export(results, circuit, analysis_params):
     """Create exportable results data"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -923,6 +857,140 @@ def export_results_json(results, circuit, analysis_params):
     }
     
     return json.dumps(export_data, indent=2)
+
+def create_performance_plot(results, circuit):
+    """Create performance visualization"""
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 10))
+    fig.suptitle(f'Strategy Performance - {circuit}', fontsize=16, fontweight='bold')
+    
+    colors = ['steelblue', 'sandybrown', 'crimson', 'seagreen', 'indianred']
+    
+    # performance Distribution
+    for i, (name, times) in enumerate(results.items()):
+        color = colors[i % len(colors)]
+        ax1.hist(times, bins=30, alpha=0.6, label=name, color=color, density=True)
+        median = np.median(times)
+        ax1.axvline(median, color=color, linestyle='--', linewidth=2)
+                          
+    ax1.set_xlabel("Race Time (seconds)")
+    ax1.set_ylabel("Probability Density")
+    ax1.set_title("Performance Distribution")
+    ax1.legend()
+    ax1.grid(True, alpha=0.3)
+    
+    # box plot
+    data_for_box = [results[name] for name in results.keys()]
+    labels_for_box = list(results.keys())
+    
+    box_plot = ax2.boxplot(data_for_box, labels=labels_for_box, patch_artist=True)
+    for i, patch in enumerate(box_plot['boxes']):
+        patch.set_facecolor(colors[i % len(colors)])
+        patch.set_alpha(0.7)
+        
+    ax2.set_ylabel("Race Time (seconds)")
+    ax2.set_title("Performance Spread")
+    ax2.tick_params(axis='x', rotation=45)
+    ax2.grid(True, alpha=0.3)
+    
+    # performance metrics
+    strategies = list(results.keys())
+    x_pos = np.arange(len(strategies))
+    
+    medians = [np.median(results[s]) for s in strategies]
+    p95s = [np.percentile(results[s], 95) for s in strategies]
+    
+    ax3.bar(x_pos, medians, alpha=0.8, color='lightblue', label='Median')
+    ax3.bar(x_pos, p95s, alpha=0.5, color='lightcoral', label='95th Percentile')
+    
+    ax3.set_xlabel("Strategy")
+    ax3.set_ylabel("Race Time (seconds)")
+    ax3.set_title("Performance Comparison")
+    ax3.set_xticks(x_pos)
+    ax3.set_xticklabels(strategies, rotation=45)
+    ax3.legend()
+    ax3.grid(True, alpha=0.3)
+    
+    # cumulative distribution
+    for i, (strategy, times) in enumerate(results.items()):
+        sorted_times = np.sort(times)
+        cumulative_prob = np.arange(1, len(times) + 1) / len(times)
+        ax4.plot(sorted_times, cumulative_prob, label=strategy, 
+                color=colors[i % len(colors)], linewidth=2)
+    
+    ax4.set_xlabel("Race Time (seconds)")
+    ax4.set_ylabel("Cumulative Probability")
+    ax4.set_title("Cumulative Distribution")
+    ax4.grid(True, alpha=0.3)
+    ax4.legend()
+    
+    plt.tight_layout()
+    return fig
+
+def run_strategy_analysis(sim, circuit, selected_strategies, tire_allocation, base_pace, pit_loss, num_sims, progress_bar=None, status_text=None):
+    """Run the strategy analysis with custom or default strategies and progress tracking"""
+    circuit_info = sim.circuits[circuit]
+    circuit_laps = circuit_info['laps']
+    
+    # Use custom strategies if available, otherwise use defaults
+    if hasattr(st.session_state, 'advanced_strategies') and st.session_state.advanced_strategies:
+        strategies_to_use = st.session_state.advanced_strategies
+        use_scaling = False  # Don't scale advanced strategies
+    elif hasattr(st.session_state, 'custom_strategies') and st.session_state.custom_strategies:
+        strategies_to_use = st.session_state.custom_strategies
+        use_scaling = False  # Don't scale custom strategies
+    else:
+        strategies_to_use = {name: ALL_STRATEGIES[name] for name in selected_strategies}
+        use_scaling = True  # Scale default strategies
+    
+    # Adjust strategies for circuit (only if using default strategies)
+    adjusted_strategies = {}
+    for strategy_name in selected_strategies:
+        if strategy_name in strategies_to_use:
+            strategy = strategies_to_use[strategy_name]
+            
+            if use_scaling:
+                total_original_laps = sum(stint['laps'] for stint in strategy)
+                scale_factor = circuit_laps / total_original_laps
+                
+                adjusted_strategy = []
+                remaining_laps = circuit_laps
+                
+                for i, stint in enumerate(strategy):
+                    if i == len(strategy) - 1:
+                        laps = remaining_laps
+                    else:
+                        scaled_laps = stint['laps'] * scale_factor
+                        laps = max(1, round(scaled_laps))
+                        laps = min(laps, remaining_laps - (len(strategy) - i - 1))
+                        remaining_laps -= laps
+                        
+                    adjusted_strategy.append({'compound': stint['compound'], 'laps': laps})
+                
+                adjusted_strategies[strategy_name] = adjusted_strategy
+            else:
+                # Use custom strategy as-is
+                adjusted_strategies[strategy_name] = strategy
+    
+    # Run simulations with progress tracking
+    results = {}
+    total_strategies = len(adjusted_strategies)
+    
+    for strategy_idx, (name, strategy) in enumerate(adjusted_strategies.items()):
+        if status_text:
+            status_text.text(f"Analyzing {name}... ({strategy_idx + 1}/{total_strategies})")
+        
+        try:
+            times = sim.simulate_race_strategy(
+                circuit, strategy, tire_allocation, base_pace, pit_loss, num_sims,
+                progress_bar=progress_bar, status_text=status_text
+            )
+            results[name] = times
+                
+        except ValueError as e:
+            st.error(f"{name}: {e}")
+            continue
+    
+    return results
 def create_pdf_report(results, circuit, analysis_params):
     """Create PDF report with all tables and details"""
     from matplotlib.backends.backend_pdf import PdfPages
@@ -1247,152 +1315,6 @@ The analysis shows performance differences between strategies based on
     
     buffer.seek(0)
     return buffer.getvalue()
-def create_performance_plot(results, circuit):
-    """Create performance visualization"""
-    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 10))
-    fig.suptitle(f'Strategy Performance - {circuit}', fontsize=16, fontweight='bold')
-    
-    colors = ['steelblue', 'sandybrown', 'crimson', 'seagreen', 'indianred']
-    
-    # performance Distribution
-    for i, (name, times) in enumerate(results.items()):
-        color = colors[i % len(colors)]
-        ax1.hist(times, bins=30, alpha=0.6, label=name, color=color, density=True)
-        median = np.median(times)
-        ax1.axvline(median, color=color, linestyle='--', linewidth=2)
-                          
-    ax1.set_xlabel("Race Time (seconds)")
-    ax1.set_ylabel("Probability Density")
-    ax1.set_title("Performance Distribution")
-    ax1.legend()
-    ax1.grid(True, alpha=0.3)
-    
-    # box plot
-    data_for_box = [results[name] for name in results.keys()]
-    labels_for_box = list(results.keys())
-    
-    box_plot = ax2.boxplot(data_for_box, labels=labels_for_box, patch_artist=True)
-    for i, patch in enumerate(box_plot['boxes']):
-        patch.set_facecolor(colors[i % len(colors)])
-        patch.set_alpha(0.7)
-        
-    ax2.set_ylabel("Race Time (seconds)")
-    ax2.set_title("Performance Spread")
-    ax2.tick_params(axis='x', rotation=45)
-    ax2.grid(True, alpha=0.3)
-    
-    # performance metrics
-    strategies = list(results.keys())
-    x_pos = np.arange(len(strategies))
-    
-    medians = [np.median(results[s]) for s in strategies]
-    p95s = [np.percentile(results[s], 95) for s in strategies]
-    
-    ax3.bar(x_pos, medians, alpha=0.8, color='lightblue', label='Median')
-    ax3.bar(x_pos, p95s, alpha=0.5, color='lightcoral', label='95th Percentile')
-    
-    ax3.set_xlabel("Strategy")
-    ax3.set_ylabel("Race Time (seconds)")
-    ax3.set_title("Performance Comparison")
-    ax3.set_xticks(x_pos)
-    ax3.set_xticklabels(strategies, rotation=45)
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-    
-    # cumulative distribution
-    for i, (strategy, times) in enumerate(results.items()):
-        sorted_times = np.sort(times)
-        cumulative_prob = np.arange(1, len(times) + 1) / len(times)
-        ax4.plot(sorted_times, cumulative_prob, label=strategy, 
-                color=colors[i % len(colors)], linewidth=2)
-    
-    ax4.set_xlabel("Race Time (seconds)")
-    ax4.set_ylabel("Cumulative Probability")
-    ax4.set_title("Cumulative Distribution")
-    ax4.grid(True, alpha=0.3)
-    ax4.legend()
-    
-    plt.tight_layout()
-    return fig
-
-def run_strategy_analysis(sim, circuit, selected_strategies, tire_allocation, base_pace, pit_loss, num_sims, progress_bar=None, status_text=None):
-    """Run the strategy analysis with custom or default strategies and progress tracking"""
-    circuit_info = sim.circuits[circuit]
-    circuit_laps = circuit_info['laps']
-    
-    # Use custom strategies if available, otherwise use defaults
-    if hasattr(st.session_state, 'advanced_strategies') and st.session_state.advanced_strategies:
-        strategies_to_use = st.session_state.advanced_strategies
-        use_scaling = False  # Don't scale advanced strategies
-    elif hasattr(st.session_state, 'custom_strategies') and st.session_state.custom_strategies:
-        strategies_to_use = st.session_state.custom_strategies
-        use_scaling = False  # Don't scale custom strategies
-    else:
-        strategies_to_use = {name: ALL_STRATEGIES[name] for name in selected_strategies}
-        use_scaling = True  # Scale default strategies
-    
-    # Adjust strategies for circuit (only if using default strategies)
-    adjusted_strategies = {}
-    for strategy_name in selected_strategies:
-        if strategy_name in strategies_to_use:
-            strategy = strategies_to_use[strategy_name]
-            
-            if use_scaling:
-                total_original_laps = sum(stint['laps'] for stint in strategy)
-                scale_factor = circuit_laps / total_original_laps
-                
-                adjusted_strategy = []
-                remaining_laps = circuit_laps
-                
-                for i, stint in enumerate(strategy):
-                    if i == len(strategy) - 1:
-                        laps = remaining_laps
-                    else:
-                        scaled_laps = stint['laps'] * scale_factor
-                        laps = max(1, round(scaled_laps))
-                        laps = min(laps, remaining_laps - (len(strategy) - i - 1))
-                        remaining_laps -= laps
-                        
-                    adjusted_strategy.append({'compound': stint['compound'], 'laps': laps})
-                
-                adjusted_strategies[strategy_name] = adjusted_strategy
-            else:
-                # Use custom strategy as-is
-                adjusted_strategies[strategy_name] = strategy
-    
-    # Run simulations with progress tracking
-    results = {}
-    total_strategies = len(adjusted_strategies)
-    
-    for strategy_idx, (name, strategy) in enumerate(adjusted_strategies.items()):
-        if status_text:
-            status_text.text(f"Analyzing {name}... ({strategy_idx + 1}/{total_strategies})")
-        
-        try:
-            times = sim.simulate_race_strategy(
-                circuit, strategy, tire_allocation, base_pace, pit_loss, num_sims,
-                progress_bar=progress_bar, status_text=status_text
-            )
-            results[name] = times
-                
-        except ValueError as e:
-            st.error(f"{name}: {e}")
-            continue
-    
-    return results
-
-# predefined strategies
-ALL_STRATEGIES = {
-    "1-stop (M-H)": [{"compound": "MEDIUM", "laps": 20}, {"compound": "HARD", "laps": 24}],
-    "1-stop (S-H)": [{"compound": "SOFT", "laps": 15}, {"compound": "HARD", "laps": 29}],
-    "2-stop (M-M-H)": [{"compound": "MEDIUM", "laps": 15}, {"compound": "MEDIUM", "laps": 15}, {"compound": "HARD", "laps": 14}],
-    "2-stop (M-M-S)": [{"compound": "MEDIUM", "laps": 16}, {"compound": "MEDIUM", "laps": 16}, {"compound": "SOFT", "laps": 12}],
-    "2-stop (S-M-H)": [{"compound": "SOFT", "laps": 12}, {"compound": "MEDIUM", "laps": 16}, {"compound": "HARD", "laps": 16}],
-    "2-stop (H-M-S)": [{"compound": "HARD", "laps": 16}, {"compound": "MEDIUM", "laps": 16}, {"compound": "SOFT", "laps": 12}],
-    "1-stop (H-M)": [{"compound": "HARD", "laps": 25}, {"compound": "MEDIUM", "laps": 19}],
-    "1-stop (H-S)": [{"compound": "HARD", "laps": 31}, {"compound": "SOFT", "laps": 13}],
-    "2-stop (M-H-M)": [{"compound": "MEDIUM", "laps": 12}, {"compound": "HARD", "laps": 18}, {"compound": "MEDIUM", "laps": 14}]
-}
 def main():
     st.title("🏎️ F1 Strategy Simulator Pro 🏎️")
     
@@ -1458,7 +1380,7 @@ def main():
                 )
                 tire_allocation.append({'compound': compound, 'age_laps': age})
     
-    # Circuit and simulation parameters in sidebar (moved from analysis tab)
+    # Circuit and simulation parameters in sidebar
     if circuit != "Select Race" and selected_strategies:
         st.sidebar.markdown("---")
         st.sidebar.header("Analysis Parameters")
@@ -1509,10 +1431,8 @@ def main():
         
         if getattr(st.session_state, 'use_f1_curves', False):
             st.sidebar.success("Using 5-Point Curves")
-        elif tire_model_type_current == "Bayesian Tire Models":
-            st.sidebar.info("Using Bayesian tire models")
         else:
-            st.sidebar.info("Using default tire models")
+            st.sidebar.info("Using Default Physics Models")
         
         # RUN ANALYSIS BUTTON in sidebar
         st.sidebar.markdown("---")
@@ -1555,7 +1475,7 @@ def main():
         st.markdown("""
         ## 🏁 Welcome to the F1 Strategy Simulator Pro! 🏁
         
-        This tool helps you analyze and compare different pit stop strategies for Formula 1 races using Bayesian tire modeling and Monte Carlo simulation.
+        This tool helps you analyze and compare different pit stop strategies for Formula 1 races using advanced tire modeling and Monte Carlo simulation.
         
         ### How to Use:
         
@@ -1576,7 +1496,6 @@ def main():
              - Point 3: Linear degradation rate
              - Point 4: Performance cliff detection
              - Point 5: Maximum usable stint length
-           - **Bayesian Tire Models**: Real F1 telemetry data-based models
            - **Default Physics**: Simple physics-based degradation models
         
         4. ⚙️ **Adjust Parameters** ⚙️
@@ -1588,46 +1507,42 @@ def main():
            - Set specific tire sets and their ages in the sidebar
                     
         6. 🏁 **Run Analysis** 🏁
-                    
            - Click "Run Analysis" to simulate thousands of race scenarios
            - View performance distributions, risk analysis, and head-to-head comparisons
         
-       #### Description:
-        The F1 Strategy Simulator employs a multi-modal tire modeling framework combining 
-        empirical 5-point curve analysis, Bayesian inference, and Monte Carlo simulation 
-        for race strategy optimization. 
-        
-        The primary tire performance model implements a 5-point empirical curve system 
-        extracted from real F1 telemetry data: (1) compound baseline performance calculated 
-        as median lap time during mid-stint periods, (2) warmup penalty quantification through 
-        delta analysis against baseline for early stint laps, (3) linear degradation rate 
-        estimation via OLS regression on stable mid-stint periods, (4) performance cliff 
-        detection using rolling window change-point analysis on degradation rates, and 
-        (5) maximum stint length determination from high percentiles of observed stint 
-        distributions.
-        
-        When empirical models are unavailable, the system falls back to Bayesian tire 
-        models using MCMC inference with NUTS sampling to estimate posterior distributions 
-        for linear degradation parameters following μ = α + β × (stint_lap + tire_age), 
-        with appropriate priors for intercept, slope, and noise parameters. A final 
-        fallback implements physics-based models with compound-specific degradation rates 
-        and exponential penalties for extended stints beyond typical operating windows.
-        
-        Fuel correction applies weight-based transformations accounting for decreasing 
-        fuel load throughout the race, where fuel consumption is calculated from total 
-        fuel allocation divided by circuit lap count. The Monte Carlo engine executes 
-        user-configurable simulation counts sampling from tire model posteriors while 
-        adding appropriate Gaussian noise for lap-to-lap variability and base pace 
-        variation between simulations.
-        
-        The system incorporates tire allocation optimization with age-based performance 
-        penalties, circuit-specific pit loss timing, and strategy validation against 
-        available tire sets. Circuit adaptation automatically scales strategy lap counts 
-        proportionally to race distance while maintaining compound sequences. Output 
-        analysis generates empirical probability distributions from Monte Carlo samples, 
-        providing percentile-based risk metrics, median performance comparisons, and 
-        head-to-head win rate matrices for strategy evaluation under uncertainty.
+        #### Description:
+        The F1 Strategy Simulator employs a dual-modal tire modeling framework combining
+        editable 5-point curve analysis and physics-based fallback models with Monte Carlo simulation
+        for race strategy optimization.
                     
+        The primary tire performance model implements a user-configurable 5-point curve system
+        with adjustable parameters: (1) compound baseline performance relative to SOFT tires,
+        (2) tire warmup penalty duration and magnitude for cold tires, (3) linear degradation
+        rate per lap during normal operation, (4) performance cliff onset lap where high
+        degradation begins, and (5) maximum usable stint length beyond which severe penalties
+        apply. Users can interactively adjust these parameters through sliders to model
+        different tire characteristics and circuit conditions.
+                    
+        When 5-point curves are not selected, the system falls back to physics-based tire
+        models using compound-specific degradation rates and compound performance offsets.
+        The physics model applies linear degradation with exponential penalties for extended
+        stints beyond typical operating windows, plus age-based performance penalties for
+        used tire sets.
+                    
+        Fuel correction applies weight-based transformations accounting for decreasing
+        fuel load throughout the race, where fuel consumption is calculated from total
+        fuel allocation divided by circuit lap count. The Monte Carlo engine executes
+        user-configurable simulation counts while adding appropriate Gaussian noise for
+        lap-to-lap variability and base pace variation between simulations.
+                    
+        The system incorporates tire allocation optimization with age-based performance
+        penalties, circuit-specific pit loss timing, and strategy validation against
+        available tire sets. Circuit adaptation automatically scales strategy lap counts
+        proportionally to race distance while maintaining compound sequences. Output
+        analysis generates empirical probability distributions from Monte Carlo samples,
+        providing percentile-based risk metrics, median performance comparisons, and
+        head-to-head win rate matrices for strategy evaluation under uncertainty.
+        
         **Get started by selecting a circuit from the sidebar!** 👈
         """)
         
@@ -1662,26 +1577,21 @@ def main():
             
             tire_model_type = st.radio(
                 "Select Tire Model",
-                ["5-Point Curves (Editable)", "Bayesian Tire Models", "Default Physics Models"],
+                ["5-Point Curves (Editable)", "Default Physics Models"],
                 key="tire_model_type"
             )
             
             if tire_model_type == "5-Point Curves (Editable)":
                 st.session_state.use_f1_curves = True
+                st.session_state.force_default_physics = False
                 st.info("Using 5-Point Curves - Configure below")
                 
                 # Render the tire curve editor
                 st.session_state.f1_tire_editor.render_tire_curve_editor()
                 
-            elif tire_model_type == "Bayesian Tire Models":
-                st.session_state.use_f1_curves = False
-                if sim.empirical_analyzer:
-                    st.success("Using Bayesian Tire Models from real F1 telemetry")
-                else:
-                    st.warning("Bayesian models not available - falling back to Default models")
-                    
             else:  # Default Physics Models
                 st.session_state.use_f1_curves = False
+                st.session_state.force_default_physics = True
                 st.info("Using Default Physics-Based Models")
             
             # Strategy editors
@@ -1742,7 +1652,7 @@ def main():
                 st.header(f"🏁 Strategy Analysis Results - {params['circuit']}")
                 
                 # Analysis summary
-                modeling_type = "5-Point Curves" if params.get('use_f1_curves', False) else "Bayesian/Default Models"
+                modeling_type = "5-Point Curves" if params.get('use_f1_curves', False) else "Default Physics Models"
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
@@ -1814,7 +1724,7 @@ def main():
                     risk_df = pd.DataFrame(risk_data)
                     st.dataframe(risk_df, use_container_width=True)
                     
-                    # Final recommendations at bottom (only once)
+                    # Final recommendations
                     best = df.iloc[0]
                     most_consistent = df.loc[df['Std Dev (s)'].idxmin()]
                     
@@ -1902,5 +1812,4 @@ def main():
             st.rerun()
 
 if __name__ == "__main__":
-
     main()
