@@ -4,14 +4,13 @@ A professional Formula 1 race strategy analysis tool that uses advanced tire mod
 
 ## 🏆 Key Features
 
-### 🔧 Advanced Tire Modeling
+### 🔧 Dual-Modal Tire Modeling
 - **5-Point Curve System**: Professional tire modeling with fully editable parameters
   - Point 1: Compound baseline performance (relative to SOFT)
   - Point 2: Tire warmup characteristics and penalties
   - Point 3: Linear degradation rate per lap
   - Point 4: Performance cliff detection and wear life limits
   - Point 5: Maximum usable stint length before severe penalties
-- **Bayesian Tire Models**: MCMC-based statistical models trained on real F1 telemetry data
 - **Physics-Based Fallback**: Compound-specific degradation models with exponential penalties
 
 ### 🏁 Complete Circuit Coverage
@@ -23,7 +22,6 @@ A professional Formula 1 race strategy analysis tool that uses advanced tire mod
 ### ⚙️ Flexible Strategy Configuration
 - **9 Pre-defined Strategies**: Common 1-stop and 2-stop strategies with realistic compound sequences
 - **Custom Strategy Editor**: Modify stint lengths and tire compounds for existing strategies
-- **Advanced Strategy Builder**: COMING SOON
 - **Custom Tire Allocation**: Define specific tire sets with age and usage history
 - **Strategy Validation**: Automatic checking for tire availability and lap count accuracy
 
@@ -78,12 +76,10 @@ Choose from any of the 24 F1 circuits in the 2025 calendar. Each circuit has:
 Select one or more strategies to compare:
 - **Default Strategies**: Pre-configured 1-stop and 2-stop options
 - **Custom Editor**: Modify existing strategies with different stint lengths
-- **Advanced Builder**: Create new strategies with custom pit stop counts
 
 ### 3. Tire Model Configuration
 Choose your preferred tire modeling approach:
 - **5-Point Curves**: Professional system with 5 editable parameters per compound
-- **Bayesian Models**: Real F1 data-based models with uncertainty quantification
 - **Default Physics**: Simple compound-specific degradation models
 
 ### 4. Analysis Parameters
@@ -104,25 +100,20 @@ Comprehensive output includes:
 ## 🔬 Technical Implementation
 
 ### Tire Performance Modeling
-The simulator employs a hierarchical tire modeling approach:
+The simulator employs a dual-modal tire modeling approach:
 
-1. **5-Point Empirical Curves** (Primary):
-   - Compound offset calculation relative to SOFT baseline
-   - Warmup penalty modeling for initial laps (decreasing effect)
-   - Linear degradation throughout stint with compound-specific rates
-   - Performance cliff detection at wear life threshold
-   - Severe penalties beyond maximum usable stint length
+1. **5-Point Curve System** (Primary):
+   - User-configurable compound offset relative to SOFT baseline
+   - Warmup penalty modeling for initial laps (decreasing effect over first 3 laps)
+   - Linear degradation throughout stint with editable rates per compound
+   - Performance cliff onset at user-defined wear life threshold
+   - Severe penalties beyond user-defined maximum usable stint length
 
-2. **Bayesian Statistical Models** (Fallback):
-   - MCMC inference using NUTS sampling for posterior estimation
-   - Linear degradation: `laptime ~ Normal(α + β × (stint_lap + tire_age), σ)`
-   - Single posterior sample per calculation for stochastic behavior
-   - Trained on fuel-corrected lap times from real F1 telemetry
-
-3. **Physics-Based Models** (Final Fallback):
-   - Compound-specific degradation rates and baseline offsets
-   - Exponential penalties for extended stints beyond typical windows
-   - Tire age effects from previous usage
+2. **Physics-Based Models** (Fallback):
+   - Compound-specific degradation rates (SOFT: 0.08, MEDIUM: 0.04, HARD: 0.02 s/lap)
+   - Compound performance offsets (SOFT: -0.8s, MEDIUM: 0.0s, HARD: +0.5s)
+   - Exponential penalties for extended stints beyond 20 laps
+   - Tire age effects from previous usage (0.02s/lap per aged lap)
 
 ### Simulation Engine
 - **Fuel Correction**: `Laptime(corrected) = Laptime - (Remaining_Laps × Fuel_Per_Lap × Weight_Effect)`
@@ -132,8 +123,7 @@ The simulator employs a hierarchical tire modeling approach:
 
 ### Data Management
 - **Circuit Database**: Complete 2025 F1 calendar with accurate parameters
-- **Model Caching**: Efficient storage and retrieval of Bayesian model parameters
-- **Session State**: Persistent configuration across user interactions
+- **Session State**: Persistent tire curve configurations across user interactions
 - **Export Pipeline**: Structured data preparation for multiple output formats
 
 ## 📋 System Requirements
@@ -143,11 +133,6 @@ The simulator employs a hierarchical tire modeling approach:
 - **Streamlit**: Web application framework
 - **NumPy/Pandas**: Numerical analysis and data manipulation
 - **Matplotlib/Plotly**: Visualization and interactive charts
-- **JAX/NumPyro**: High-performance Bayesian modeling (optional)
-
-### Optional Dependencies
-- **FastF1**: Official F1 data API for enhanced tire models
-- **ReportLab**: Advanced PDF generation capabilities
 
 ## ⚠️ Important Disclaimers
 
@@ -165,7 +150,6 @@ This simulator is designed for educational and research purposes. Actual F1 race
 - **Linear Degradation**: Models may miss complex thermal and compound behaviors
 - **Perfect Execution**: Assumes optimal pit timing without human error
 - **Clean Air Racing**: No modeling of dirty air, overtaking difficulty, or track position value
-- **Data Currency**: Based on 2024 data which may not reflect 2025 car/tire characteristics
 - **Weather Independence**: Dry conditions only (no wet/intermediate tire modeling)
 
 ### Usage Guidelines
@@ -181,13 +165,6 @@ For technical questions, feature requests, or bug reports:
 - **Email**: jessica.5t3313@gmail.com
 - **GitHub Issues**: Create detailed issue reports with reproduction steps
 
-### Contributing
-Contributions welcome for:
-- Enhanced tire modeling algorithms
-- Additional circuit-specific parameters
-- User interface improvements
-- Documentation updates
-- Performance optimizations
 
 ## 📄 License
 
