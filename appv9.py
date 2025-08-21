@@ -567,7 +567,7 @@ ALL_STRATEGIES = {
     "2-stop (M-H-M)": [{"compound": "MEDIUM", "laps": 12}, {"compound": "HARD", "laps": 18}, {"compound": "MEDIUM", "laps": 14}]
 }
 class F1StrategySimulator:
-    def __init__(self, models_dir="prebuilt_models"):
+    def __init__(self, models_dir="prebuilt_models_v2"):
         self.models_dir = Path(models_dir)
         
         # 2025 F1 Calendar
@@ -1902,4 +1902,5 @@ def main():
             st.rerun()
 
 if __name__ == "__main__":
+
     main()
