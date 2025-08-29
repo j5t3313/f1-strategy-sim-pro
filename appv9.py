@@ -1400,7 +1400,7 @@ def main():
             'Australia': 21.5, 'China': 20.8, 'Japan': 20.2, 'Bahrain': 19.8,
             'Saudi Arabia': 22.1, 'Miami': 18.5, 'Imola': 21.8, 'Monaco': 16.2,
             'Spain': 21.4, 'Canada': 15.8, 'Austria': 18.9, 'Britain': 20.5,
-            'Hungary': 22.8, 'Belgium': 23.2, 'Netherlands': 20.1, 'Italy': 15.9,
+            'Hungary': 22.8, 'Belgium': 23.2, 'Netherlands': 16.5, 'Italy': 15.9,
             'Azerbaijan': 21.7, 'Singapore': 22.5, 'United States': 20.3,
             'Mexico': 21.1, 'Brazil': 19.4, 'Las Vegas': 19.6, 'Qatar': 20.7,
             'Abu Dhabi': 21.3
@@ -1814,3 +1814,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
