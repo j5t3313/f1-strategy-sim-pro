@@ -35,7 +35,7 @@ A professional Formula 1 race strategy analysis tool that uses advanced tire mod
   - **JSON**: Complete structured data including raw results
   - **PDF**: Professional multi-page reports with visualizations and analysis
 
-### 🎯 Professional Interface
+### 🎯 User Friendly Interface
 - **Tabbed Interface**: Separate Setup and Results areas for clean workflow
 - **Progress Tracking**: Real-time simulation progress with status updates
 - **Interactive Visualizations**: Plotly charts for tire curve configuration
