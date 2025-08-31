@@ -172,4 +172,3 @@ This project is for educational and research purposes. F1 data is accessed throu
 
 ---
 
-**Enjoy professional F1 strategy analysis! 🏁**
